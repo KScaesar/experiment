@@ -3,12 +3,12 @@ package main
 import (
 	"fmt"
 
-	"github.com/zouyx/agollo/v3"
+	"experiment/config"
 )
 
 func main() {
 	A()
 	B()
-	v := agollo.GetValue("key")
+	v := config.Get()
 	fmt.Print(v)
 }
