@@ -38,6 +38,31 @@ func Get() string {
     return v
 }
 ```
+## 個人作法
 
-此專案無法執行
+### step 1  
+先在某一個檔案, 此範例的 main.go 檔案  
+將 特定第三方函數  
+重構的提取為自己的函數  
+extract method  
+![](step01.png)
+
+### step 2  
+用 move 功能, 搬到新定義的 package
+
+before:  
+![](step02-1.png)
+
+after:  
+![](step02-2.png)
+
+### step 3  
+其他檔案用複製貼上的方法取代  
+使用 replace in path  
+import package 的部份靠 goland 補全
+![](step03.png)
+
+## 其他資訊
+此專案無法執行, 不需要 go run  
+只是用來實驗重構功能
 
