@@ -20,6 +20,13 @@ const (
 	Forbidden failure.StringCode = "Forbidden"
 )
 
+func main() {
+	req := httptest.NewRequest(http.MethodGet, "/?project_id=aaa&user_id=111", nil)
+	rec := httptest.NewRecorder()
+	Handler(rec, req)
+	log.Info().Msg("Hello world")
+}
+
 func GetACL(projectID, userID string) (acl interface{}, e error) {
 	notFound := true
 	if notFound {
@@ -157,11 +164,4 @@ func HandleError(w http.ResponseWriter, err error) {
 
 	fmt.Printf("Cause = %v\n", failure.CauseOf(err))
 
-}
-
-func main() {
-	req := httptest.NewRequest(http.MethodGet, "/?project_id=aaa&user_id=111", nil)
-	rec := httptest.NewRecorder()
-	Handler(rec, req)
-	log.Info().Msg("Hello world")
 }

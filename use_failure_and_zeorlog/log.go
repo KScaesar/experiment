@@ -32,7 +32,7 @@ func logInit() {
 					break
 				}
 			}
-			
+
 			return filePath
 		},
 	}
