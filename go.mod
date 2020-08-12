@@ -5,6 +5,7 @@ go 1.13
 require (
 	github.com/Masterminds/squirrel v1.4.0
 	github.com/Min-Feng/failure v0.18.0
+	github.com/davecgh/go-spew v1.1.1
 	github.com/go-sql-driver/mysql v1.4.0
 	github.com/golang/mock v1.4.4
 	github.com/jmoiron/sqlx v1.2.0
