@@ -92,32 +92,53 @@ func main() {
 ```
 
 ## 回傳 slice
+
+指針 跟 值  
+都會發生逃逸  
+但 gc 時, 在 heap 的 指針, 需要多追蹤一次  
+增加 gc mark 記憶體的時間  
+所以用值傳遞比較好  
+
 ```
+package main
+
 func NewHome() Home {
-	name := []string{"caesar"}
-	return Home{Person: name}
+	oV := Order{}
+	oP := &Order{}
+	list_oV := []Order{oV}
+	list_oP := []*Order{oP}
+	return Home{
+		ItemValue:   list_oV,
+		ItemPointer: list_oP,
+	}
 }
 
 type Home struct {
-	Person []string
-	time   time.Time
-	db     *sqlx.DB
+	ItemValue   []Order
+	ItemPointer []*Order
 }
 
 func (h *Home) Counter() {}
+
+type Order struct {
+	Name    string
+	Amount1 int64
+}
 
 func main() {
 	h := NewHome()
 	h.Counter()
 }
+
 ```
 ```
  go run -gcflags "-m -l -N" .
 
 # experiment/escape
-./escape.go:10:18: []string literal escapes to heap
-./escape.go:20:7: (*Home).Counter h does not escape
-
+./escape.go:5:8: &Order literal escapes to heap
+./escape.go:6:20: []Order literal escapes to heap
+./escape.go:7:21: []*Order literal escapes to heap
+./escape.go:19:7: (*Home).Counter h does not escape
 ```
 
 ## 二次回傳
