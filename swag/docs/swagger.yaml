@@ -1,0 +1,101 @@
+basePath: /
+definitions:
+  api.NormalResp:
+    properties:
+      code:
+        type: integer
+      data:
+        type: object
+      msg:
+        type: string
+    type: object
+  domain.User:
+    properties:
+      age:
+        type: integer
+      id:
+        type: string
+      name:
+        type: string
+      role:
+        enum:
+        - admin
+        - ops
+        - dev
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@caesar.io
+    name: caesar API Support
+  title: Swagger Example API
+  version: "1.0"
+paths:
+  /api/user:
+    post:
+      parameters:
+      - description: '''Bearer token'''
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: RequestBody
+        in: body
+        name: RequestBody
+        required: true
+        schema:
+          $ref: '#/definitions/domain.User'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - type: object
+            - properties:
+                code:
+                  type: integer
+                msg:
+                  type: string
+              type: object
+      summary: Create User
+  /api/user/{id}:
+    get:
+      parameters:
+      - description: '''Bearer token'''
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: user id
+        in: path
+        name: id
+        required: true
+        type: string
+      - in: query
+        name: age
+        type: integer
+      - enum:
+        - admin
+        - ops
+        - dev
+        in: query
+        name: role
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.NormalResp'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/domain.User'
+                  type: array
+              type: object
+swagger: "2.0"
