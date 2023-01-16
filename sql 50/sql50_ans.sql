@@ -241,6 +241,7 @@ where t.tname like '劉%'
 --select distinct s.sno ,s.sname 
 --from student s join sc on s.sno = sc.sno join course c on sc.cno = c.cno  join teacher t on c.tno = t.tno and t.tname = '諶燕'
 
+--不容易理解的寫法
 select *
 from sc , count(*)
 join course c using(sc.cno)
@@ -274,8 +275,30 @@ where s.sno in (
 	group by st_te.sno
 	having count(*) = 1
 )
---and t.tname = '諶燕'
+and t.tname = '諶燕';
 
+--容易理解的寫法
+--利用集合的關係
+-- https://i.stack.imgur.com/ObDyr.png
+select *
+from (
+	select *
+	from student st
+	inner join sc using(sno)
+	inner join course using(cno)
+	inner join teacher t using(tno)
+	where t.tname = '諶燕'
+) has_t 
+left join (
+	select *
+	from student st
+	inner join sc using(sno)
+	inner join course using(cno)
+	inner join teacher t using(tno)
+	where t.tname <> '諶燕'
+) no_has_t 
+on has_t.sno = no_has_t.sno
+where no_has_t.sno is null;
 
 --以下三個sql
 --參考的維度是相同的
@@ -334,6 +357,24 @@ where s.sno in (
 --select *
 --from student s join sc on s.sno = sc.sno and (sc.cno in  ('c001', 'c002'))
 
+-- 我的解法, 只想著用集合的寫法, 感覺效能不佳
+select *
+from (
+	select *
+	from student st
+	inner join sc using(sno)
+	inner join course using(cno)
+	where course.cno = 'c001'
+) st_c1 
+inner join (
+	select *
+	from student st
+	inner join sc using(sno)
+	inner join course using(cno)
+	where course.cno = 'c002'
+) st_c2
+on st_c1.sno = st_c2.sno;
+
 --解答
 SELECT sno, sname
 FROM student
@@ -341,6 +382,16 @@ WHERE sno in (
 	SELECT a.sno
 	FROM sc a,sc b 
 	WHERE a.sno=b.sno AND a.cno='c001' AND b.cno='c002'
+)
+
+--參考解答的寫法
+SELECT sno, sname
+FROM student
+WHERE sno in (
+	SELECT a.sno
+	FROM sc a
+	inner join sc b 
+	on a.sno=b.sno AND a.cno='c001' AND b.cno='c002'
 )
 
 --19 查詢學過”諶燕”老師所教的所有課的同學的學號:姓名
@@ -429,7 +480,17 @@ WHERE 60 > ALL(
 	SELECT score 
 	FROM sc y 
 	WHERE x.sno=y.sno
-)all
+)
+
+-- 錯誤作法
+-- 會把沒修課的人, 當成不及格
+--select distinct sname
+--from student st
+--where 60 > all(
+--	select score
+--	from sc
+--	where st.sno = sc.sno 
+--)
 
 --22
 select *
