@@ -1,6 +1,6 @@
 module experiment
 
-go 1.13
+go 1.20
 
 require (
 	github.com/Masterminds/squirrel v1.4.0
