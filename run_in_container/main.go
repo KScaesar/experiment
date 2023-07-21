@@ -10,9 +10,10 @@ import (
 )
 
 func main() {
-	env, dsn := loadEnvFile()
+	env, dsn, run := loadEnvFile()
 	fmt.Println("env =", env)
 	fmt.Println("dsn =", dsn)
+	fmt.Println("run =", run)
 
 	pingDatabase(dsn)
 	fmt.Println("db ping ok!")
@@ -31,7 +32,7 @@ func pingDatabase(dsn string) {
 
 }
 
-func loadEnvFile() (env, dsn string) {
+func loadEnvFile() (env, dsn, s string) {
 	var dir string
 	name, exist := os.LookupEnv("ENV")
 	if !exist || name == "" {
@@ -50,5 +51,5 @@ func loadEnvFile() (env, dsn string) {
 		panic(fmt.Sprintf("load config: %v", err))
 	}
 
-	return vp.Get("env").(string), vp.Get("dsn").(string)
+	return vp.Get("env").(string), vp.Get("dsn").(string), vp.Get("run").(string)
 }

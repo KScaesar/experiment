@@ -1,0 +1,52 @@
+version: "3.4"
+
+services:
+  web:
+    container_name: goland_debug
+    build:
+#      dockerfile: ./Dockerfile
+      dockerfile: ./Go Build.Dockerfile
+      context: ./
+
+#      https://firehydrant.com/blog/develop-a-go-app-with-docker-compose/
+#      target: dev
+
+    ports:
+      - "40000:40000"
+    environment:
+#      ENV: container
+      ENV: local
+
+    security_opt:
+      - "seccomp:unconfined"
+    cap_add:
+      - SYS_PTRACE
+
+#    command: /dlv --headless --listen=:40000 --api-version=2 exec /server
+    depends_on:
+      - mysql
+
+  mysql:
+    image: mysql:5.7.29
+    container_name: mysql
+    # restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=1234
+      - MYSQL_DATABASE=integration_test
+      - MYSQL_USER=caesar
+      - MYSQL_PASSWORD=0000
+    ports:
+      - "3306:3306"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+        max-file: "10"
+    volumes:
+      # - /etc/localtime:/etc/localtime:ro
+      - data:/var/lib/mysql
+#      - ./etc/5.7/my_setting.cnf:/etc/mysql/conf.d/my_setting.cnf
+
+volumes:
+  data:
+    name: mysql_db

@@ -1,4 +1,6 @@
-env: local
+run: for goland "Docker"
+
+env: container
 
 # ipconfig getifaddr en0
-dsn: user:password@tcp(127.0.0.1:3006)/dbname
+dsn: "root:1234@tcp(mysql:3306)/integration_test"
