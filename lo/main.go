@@ -23,14 +23,14 @@ func etl1() {
 	}
 
 	fanOutAll := lop.Map(lo.Chunk(workIdAll, 2), func(workIdChunk []int, _ int) <-chan []string {
-		mq := make(chan []string, 1) // 和 etl2 的差異
+		dataMQ := make(chan []string, 1) // 和 etl2 的差異
 		transform := func(workId int, _ int) string {
 			return strconv.Itoa(workId)
 		}
 		fmt.Println(workIdChunk)
-		mq <- lo.Map(workIdChunk, transform)
-		close(mq)
-		return mq
+		dataMQ <- lo.Map(workIdChunk, transform)
+		close(dataMQ)
+		return dataMQ
 	})
 
 	chunkResult := lo.ChannelToSlice(lo.FanIn(0, fanOutAll...))
@@ -45,16 +45,16 @@ func etl2() {
 	}
 
 	fanOutAll := lo.Map(lo.Chunk(workIdAll, 2), func(workIdChunk []int, _ int) <-chan []string {
-		mq := make(chan []string) // 和 etl1 的差異
+		dataMQ := make(chan []string) // 和 etl1 的差異
 		transform := func(workId int, _ int) string {
 			return strconv.Itoa(workId)
 		}
 		go func() {
 			fmt.Println(workIdChunk)
-			mq <- lo.Map(workIdChunk, transform)
-			close(mq)
+			dataMQ <- lo.Map(workIdChunk, transform)
+			close(dataMQ)
 		}()
-		return mq
+		return dataMQ
 	})
 
 	chunkResult := lo.ChannelToSlice(lo.FanIn(0, fanOutAll...))
@@ -69,24 +69,24 @@ func etl3() {
 	}
 
 	fanOutAll := lo.Map(lo.Chunk(workIdAll, 2), func(workIdChunk []int, _ int) <-chan string {
-		mq := make(chan string, len(workIdChunk))
+		dataMQ := make(chan string, len(workIdChunk))
 		timeout, cancelFunc := context.WithTimeout(context.Background(), time.Minute)
 		go func() {
 			defer func() {
-				close(mq)
+				close(dataMQ)
 				cancelFunc()
 			}()
 
 			fmt.Println(workIdChunk)
 			lo.ForEach(workIdChunk, func(workId int, index int) {
 				select {
-				case mq <- strconv.Itoa(workId):
+				case dataMQ <- strconv.Itoa(workId):
 				case <-timeout.Done():
 					return
 				}
 			})
 		}()
-		return mq
+		return dataMQ
 	})
 
 	result := lo.ChannelToSlice(lo.FanIn(0, fanOutAll...))
