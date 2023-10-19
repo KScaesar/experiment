@@ -28,91 +28,106 @@ func init() {
 
 func main() {
 	// https://github.com/streadway/amqp/blob/master/_examples/simple-consumer/consumer.go
-	comsumers := make([]*Consumer, 0)
-	mu := sync.Mutex{}
+	conn, err := NewConnection()
+	if err != nil {
+		panic(err)
+	}
+
+	m1, err := NewConsumerManager(conn)
+	if err != nil {
+		panic(err)
+	}
+	m2, err := NewConsumerManager(conn)
+	if err != nil {
+		panic(err)
+	}
+
 	go func() {
-		i := 0
-		for i < 5 {
-			exchange := "user"
-			queue := fmt.Sprintf("user-%v", i)
-			// bindingKey := fmt.Sprintf("login.%v", queue)
-			bindingKey := "login.#"
-			consumerTag := fmt.Sprintf("consumer-%v", i)
-			c, err := NewConsumer(exchange, queue, bindingKey, consumerTag)
+		for i := 0; i < 5; i++ {
+			user := fmt.Sprintf("%v", i)
+			queue := fmt.Sprintf("user-%v", user)
+
+			err = m1.Consume("yyy", "fanout", queue, "broadcast") // 1個 queue 有多個消費者, 造型奇怪現象
 			if err != nil {
 				log.Fatalf("%s", err)
 			}
-			log.Printf("\n")
 
-			mu.Lock()
-			comsumers = append(comsumers, c)
-			mu.Unlock()
-			i++
-			// time.Sleep(1 * time.Second)
+			bindingKey := fmt.Sprintf("login.%v", user)
+			err = m2.Consume("xxx", "topic", queue, bindingKey) // 1個 queue 有多個消費者, 造型奇怪現象
+			if err != nil {
+				log.Fatalf("%s", err)
+			}
+
+			log.Printf("\n")
 		}
 	}()
 
 	time.Sleep(60 * time.Minute)
 	// time.Sleep(60 * time.Second)
-	mu.Lock()
-	for i, c := range comsumers {
-		log.Printf("shutting down: consumer-%v\n", i)
-		if err := c.Shutdown(); err != nil {
-			log.Fatalf("error during shutdown: %s", err)
-		}
+	if err := m1.ShutdownAll(); err != nil {
+		log.Fatalf("ShutdownAll: %v", err)
+		return
 	}
-	mu.Unlock()
+	if err := m2.ShutdownAll(); err != nil {
+		log.Fatalf("ShutdownAll: %v", err)
+		return
+	}
+	if err := conn.Close(); err != nil {
+		log.Fatalf("AMQP connection close error: %s", err)
+		return
+	}
+
 	log.Printf("end!\n")
 }
 
-type Consumer struct {
-	conn    *amqp.Connection
-	channel *amqp.Channel
-	tag     string
-	done    chan error
-}
-
-func NewConsumer(exchange, queueName, key, ctag string) (*Consumer, error) {
+func NewConnection() (*amqp.Connection, error) {
 	amqpURI := "amqp://guest:guest@localhost:5672/"
-	c := &Consumer{
-		conn:    nil,
-		channel: nil,
-		tag:     ctag,
-		done:    make(chan error),
-	}
-
-	var err error
-
 	log.Printf("dialing %q", amqpURI)
-	c.conn, err = amqp.Dial(amqpURI)
+
+	conn, err := amqp.Dial(amqpURI)
 	if err != nil {
 		return nil, fmt.Errorf("Dial: %s", err)
 	}
 
 	go func() {
-		fmt.Printf("closing: %s", <-c.conn.NotifyClose(make(chan *amqp.Error)))
+		fmt.Printf("closing: %s", <-conn.NotifyClose(make(chan *amqp.Error)))
 	}()
+	return conn, err
+}
 
-	log.Printf("got Connection, getting Channel")
-	c.channel, err = c.conn.Channel()
+func NewConsumerManager(conn *amqp.Connection) (*ConsumerManager, error) {
+	channel, err := conn.Channel()
 	if err != nil {
 		return nil, fmt.Errorf("Channel: %s", err)
 	}
 
-	log.Printf("got Channel, declaring Exchange (%q)", exchange)
-	if err = c.channel.ExchangeDeclare(
-		exchange, // name of the exchange
-		"topic",  // type
-		true,     // durable
-		false,    // delete when complete
-		false,    // internal
-		false,    // noWait
-		nil,      // arguments
+	manager := &ConsumerManager{
+		channel:     channel,
+		mu:          sync.RWMutex{},
+		consumerAll: make([]string, 0),
+	}
+	return manager, nil
+}
+
+type ConsumerManager struct {
+	channel     *amqp.Channel
+	mu          sync.RWMutex
+	consumerAll []string
+}
+
+func (c *ConsumerManager) Consume(exchange, exchangeType, queueName, key string) error {
+	if err := c.channel.ExchangeDeclare(
+		exchange,     // name of the exchange
+		exchangeType, // type
+		true,         // durable
+		false,        // delete when complete
+		false,        // internal
+		false,        // noWait
+		nil,          // arguments
 	); err != nil {
-		return nil, fmt.Errorf("Exchange Declare: %s", err)
+		return fmt.Errorf("Exchange Declare: %s", err)
 	}
 
-	log.Printf("declared Exchange, declaring Queue %q", queueName)
 	queue, err := c.channel.QueueDeclare(
 		queueName, // name of the queue
 		true,      // durable
@@ -122,11 +137,8 @@ func NewConsumer(exchange, queueName, key, ctag string) (*Consumer, error) {
 		nil,       // arguments
 	)
 	if err != nil {
-		return nil, fmt.Errorf("Queue Declare: %s", err)
+		return fmt.Errorf("Queue Declare: %s", err)
 	}
-
-	log.Printf("declared Queue (%q %d messages, %d consumers), binding to Exchange (key %q)",
-		queue.Name, queue.Messages, queue.Consumers, key)
 
 	if err = c.channel.QueueBind(
 		queue.Name, // name of the queue
@@ -135,45 +147,45 @@ func NewConsumer(exchange, queueName, key, ctag string) (*Consumer, error) {
 		false,      // noWait
 		nil,        // arguments
 	); err != nil {
-		return nil, fmt.Errorf("Queue Bind: %s", err)
+		return fmt.Errorf("Queue Bind: %s", err)
 	}
 
-	log.Printf("Queue bound to Exchange, starting Consume (consumer tag %q)", c.tag)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	consumerName := fmt.Sprintf("%v-%v-%v", exchange, exchangeType, queueName)
+	c.consumerAll = append(c.consumerAll, consumerName)
+
+	log.Printf("Queue bound to Exchange, starting Consume (consumer tag %q)", consumerName)
 	deliveries, err := c.channel.Consume(
-		queue.Name, // name
-		c.tag,      // consumerTag,
-		false,      // noAck
-		false,      // exclusive
-		false,      // noLocal
-		false,      // noWait
-		nil,        // arguments
+		queue.Name,   // name
+		consumerName, // consumerTag,
+		false,        // noAck
+		false,        // exclusive
+		false,        // noLocal
+		false,        // noWait
+		nil,          // arguments
 	)
 	if err != nil {
-		return nil, fmt.Errorf("Queue Consume: %s", err)
+		return fmt.Errorf("Queue Consume: %s", err)
 	}
 
-	go handle(deliveries, c.done, ctag)
-
-	return c, nil
+	go handle(deliveries, consumerName)
+	return nil
 }
 
-func (c *Consumer) Shutdown() error {
+func (c *ConsumerManager) ShutdownAll() error {
 	// will close() the deliveries channel
-	if err := c.channel.Cancel(c.tag, true); err != nil {
-		return fmt.Errorf("Consumer cancel failed: %s", err)
-	}
-
-	if err := c.conn.Close(); err != nil {
-		return fmt.Errorf("AMQP connection close error: %s", err)
+	for _, consumerName := range c.consumerAll {
+		if err := c.channel.Cancel(consumerName, true); err != nil {
+			return fmt.Errorf("ConsumerManager cancel failed: %s", err)
+		}
 	}
 
 	defer log.Printf("AMQP shutdown OK")
-
-	// wait for handle() to exit
-	return <-c.done
+	return nil
 }
 
-func handle(deliveries <-chan amqp.Delivery, done chan error, ctag string) {
+func handle(deliveries <-chan amqp.Delivery, ctag string) {
 	for d := range deliveries {
 		log.Printf(
 			"ctag: [%v], got %dB, DeliveryTag: [%v], payload: %q",
@@ -184,6 +196,5 @@ func handle(deliveries <-chan amqp.Delivery, done chan error, ctag string) {
 		)
 		d.Ack(false)
 	}
-	log.Printf("handle: deliveries channel closed")
-	done <- nil
+	log.Printf("handle: deliveries channel closed: %v", ctag)
 }
