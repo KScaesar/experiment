@@ -6,6 +6,8 @@ package main
 import (
 	"fmt"
 	"log"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -33,51 +35,121 @@ func main() {
 		panic(err)
 	}
 
-	m1, err := NewConsumerManager(conn)
-	if err != nil {
-		panic(err)
-	}
-	m2, err := NewConsumerManager(conn)
-	if err != nil {
-		panic(err)
-	}
+	manager := NewManager()
+	var channelAll []*amqp.Channel
 
 	go func() {
-		for i := 0; i < 5; i++ {
-			user := fmt.Sprintf("%v", i)
-			queue := fmt.Sprintf("user-%v", user)
+		for i := 0; i < 3; i++ {
+			user := fmt.Sprintf("user%v", i)
+			queueName := fmt.Sprintf("notify.%v", user)
 
-			err = m1.Consume("yyy", "fanout", queue, "broadcast") // 1個 queue 有多個消費者, 造型奇怪現象
-			if err != nil {
+			ex1 := "broadcast"
+			ex1Type := "fanout"
+			key1 := "broadcast.lv0.*"
+			_, channel1, err1 := NewQueueByConnection(conn, ex1, ex1Type, queueName, key1)
+			if err1 != nil {
 				log.Fatalf("%s", err)
 			}
 
-			bindingKey := fmt.Sprintf("login.%v", user)
-			err = m2.Consume("xxx", "topic", queue, bindingKey) // 1個 queue 有多個消費者, 造型奇怪現象
-			if err != nil {
-				log.Fatalf("%s", err)
+			ex2 := "condition"
+			ex2Type := "topic"
+			key2 := "*.*.*"
+			_, channel2, err2 := NewQueueByConnection(conn, ex2, ex2Type, queueName, key2)
+			if err2 != nil {
+				log.Fatalf("%s", err2)
 			}
 
-			log.Printf("\n")
+			ex3 := "single"
+			ex3Type := "direct"
+			key3 := user
+			_, channel3, err3 := NewQueueByConnection(conn, ex3, ex3Type, queueName, key3)
+			if err3 != nil {
+				log.Fatalf("%s", err3)
+			}
+
+			channelAll = append(channelAll, []*amqp.Channel{channel1, channel2, channel3}...)
+		}
+
+		for i := 0; i < 3; i++ {
+			user := fmt.Sprintf("user%v", i)
+			queueName := fmt.Sprintf("notify.%v", user)
+
+			builder := strings.Builder{}
+			builder.WriteString(queueName)
+			builder.WriteString("-")
+			builder.WriteString("worker")
+			consumerName := builder.String()
+			consumers, err := NewConsumerAllBySingleChannel(channelAll[i], queueName, consumerName, 1)
+			if err != nil {
+				log.Fatalf("%v", err)
+				return
+			}
+			manager.AddConsumerAndServeConsume(user, consumers...)
 		}
 	}()
 
 	time.Sleep(60 * time.Minute)
-	// time.Sleep(60 * time.Second)
-	if err := m1.ShutdownAll(); err != nil {
-		log.Fatalf("ShutdownAll: %v", err)
-		return
-	}
-	if err := m2.ShutdownAll(); err != nil {
-		log.Fatalf("ShutdownAll: %v", err)
-		return
-	}
+
+	manager.StopConsumerAll()
+
 	if err := conn.Close(); err != nil {
 		log.Fatalf("AMQP connection close error: %s", err)
 		return
 	}
 
 	log.Printf("end!\n")
+}
+
+func NewManager() *Manager {
+	return &Manager{}
+}
+
+type Manager struct {
+	consumers sync.Map // owner:[]Consumer
+}
+
+func (m *Manager) AddConsumerAndServeConsume(owner string, consumers ...Consumer) {
+	m.consumers.Store(owner, consumers)
+	for _, consumer := range consumers {
+		consumer := consumer
+		go func() {
+			consumer.ServeConsume()
+		}()
+	}
+}
+
+func (m *Manager) StopConsumerByOwner(owner string) {
+	value, exist := m.consumers.LoadAndDelete(owner)
+	if !exist {
+		return
+	}
+
+	for _, consumer := range value.([]Consumer) {
+		err := consumer.Shutdown()
+		if err != nil {
+			log.Printf("consumer=%v: shutdown: %v", consumer.name, err)
+		}
+	}
+	return
+}
+
+func (m *Manager) StopConsumerAll() {
+	wg := sync.WaitGroup{}
+	m.consumers.Range(func(key, value any) bool {
+		for _, consumer := range value.([]Consumer) {
+			consumer := consumer
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				err := consumer.Shutdown()
+				if err != nil {
+					log.Printf("consumer=%v: shutdown: %v", consumer.name, err)
+				}
+			}()
+		}
+		return true
+	})
+	wg.Wait()
 }
 
 func NewConnection() (*amqp.Connection, error) {
@@ -95,28 +167,8 @@ func NewConnection() (*amqp.Connection, error) {
 	return conn, err
 }
 
-func NewConsumerManager(conn *amqp.Connection) (*ConsumerManager, error) {
-	channel, err := conn.Channel()
-	if err != nil {
-		return nil, fmt.Errorf("Channel: %s", err)
-	}
-
-	manager := &ConsumerManager{
-		channel:     channel,
-		mu:          sync.RWMutex{},
-		consumerAll: make([]string, 0),
-	}
-	return manager, nil
-}
-
-type ConsumerManager struct {
-	channel     *amqp.Channel
-	mu          sync.RWMutex
-	consumerAll []string
-}
-
-func (c *ConsumerManager) Consume(exchange, exchangeType, queueName, key string) error {
-	if err := c.channel.ExchangeDeclare(
+func NewQueueByChannel(ch *amqp.Channel, exchange, exchangeType, queueName, key string) (amqp.Queue, error) {
+	if err := ch.ExchangeDeclare(
 		exchange,     // name of the exchange
 		exchangeType, // type
 		true,         // durable
@@ -125,10 +177,10 @@ func (c *ConsumerManager) Consume(exchange, exchangeType, queueName, key string)
 		false,        // noWait
 		nil,          // arguments
 	); err != nil {
-		return fmt.Errorf("Exchange Declare: %s", err)
+		return amqp.Queue{}, fmt.Errorf("Exchange Declare: %s", err)
 	}
 
-	queue, err := c.channel.QueueDeclare(
+	queue, err := ch.QueueDeclare(
 		queueName, // name of the queue
 		true,      // durable
 		false,     // delete when unused
@@ -137,64 +189,93 @@ func (c *ConsumerManager) Consume(exchange, exchangeType, queueName, key string)
 		nil,       // arguments
 	)
 	if err != nil {
-		return fmt.Errorf("Queue Declare: %s", err)
+		return amqp.Queue{}, fmt.Errorf("Queue Declare: %s", err)
 	}
 
-	if err = c.channel.QueueBind(
+	if err = ch.QueueBind(
 		queue.Name, // name of the queue
 		key,        // bindingKey
 		exchange,   // sourceExchange
 		false,      // noWait
 		nil,        // arguments
 	); err != nil {
-		return fmt.Errorf("Queue Bind: %s", err)
+		return amqp.Queue{}, fmt.Errorf("Queue Bind: %s", err)
 	}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	consumerName := fmt.Sprintf("%v-%v-%v", exchange, exchangeType, queueName)
-	c.consumerAll = append(c.consumerAll, consumerName)
+	return queue, err
+}
 
-	log.Printf("Queue bound to Exchange, starting Consume (consumer tag %q)", consumerName)
-	deliveries, err := c.channel.Consume(
-		queue.Name,   // name
-		consumerName, // consumerTag,
-		false,        // noAck
-		false,        // exclusive
-		false,        // noLocal
-		false,        // noWait
-		nil,          // arguments
-	)
+func NewQueueByConnection(conn *amqp.Connection, exchange, exchangeType, queueName, key string) (amqp.Queue, *amqp.Channel, error) {
+	channel, err := conn.Channel()
 	if err != nil {
-		return fmt.Errorf("Queue Consume: %s", err)
+		return amqp.Queue{}, nil, fmt.Errorf("NewChannel: %s", err)
 	}
 
-	go handle(deliveries, consumerName)
-	return nil
+	queue, err := NewQueueByChannel(channel, exchange, exchangeType, queueName, key)
+	if err != nil {
+		return amqp.Queue{}, nil, fmt.Errorf("NewQueue: %s", err)
+	}
+
+	return queue, channel, err
 }
 
-func (c *ConsumerManager) ShutdownAll() error {
-	// will close() the deliveries channel
-	for _, consumerName := range c.consumerAll {
-		if err := c.channel.Cancel(consumerName, true); err != nil {
-			return fmt.Errorf("ConsumerManager cancel failed: %s", err)
+func NewConsumerAllBySingleChannel(ch *amqp.Channel, queueName string, consumerName string, consumerQty int) ([]Consumer, error) {
+	var consumers []Consumer
+	for i := 0; i < consumerQty; i++ {
+		cTag := consumerName + strconv.Itoa(i)
+
+		log.Printf("starting Consume (consumer tag %q)", cTag)
+		deliveries, err := ch.Consume(
+			queueName, // name
+			cTag,      // consumerTag,
+			false,     // noAck
+			false,     // exclusive
+			false,     // noLocal
+			false,     // noWait
+			nil,       // arguments
+		)
+		if err != nil {
+			return nil, fmt.Errorf("NewConsumerAllBySingleChannel: %s", err)
 		}
+
+		consumers = append(consumers, Consumer{
+			channel:  ch,
+			delivery: deliveries,
+			name:     cTag,
+			done:     make(chan struct{}),
+		})
 	}
 
-	defer log.Printf("AMQP shutdown OK")
-	return nil
+	return consumers, nil
 }
 
-func handle(deliveries <-chan amqp.Delivery, ctag string) {
-	for d := range deliveries {
+type Consumer struct {
+	channel  *amqp.Channel        // for shutdown
+	delivery <-chan amqp.Delivery // for consume
+	name     string               // for consume
+	done     chan struct{}
+}
+
+func (c *Consumer) ServeConsume() {
+	for d := range c.delivery {
 		log.Printf(
-			"ctag: [%v], got %dB, DeliveryTag: [%v], payload: %q",
-			ctag,
+			"ctag: [%v], got %dB, DeliveryTag: [%v], payload: %q, key: %v",
+			c.name,
 			len(d.Body),
 			d.DeliveryTag,
 			d.Body,
+			d.RoutingKey,
 		)
 		d.Ack(false)
 	}
-	log.Printf("handle: deliveries channel closed: %v", ctag)
+	log.Printf("handle: deliveries channel closed: %v", c.name)
+	close(c.done)
+}
+
+func (c *Consumer) Shutdown() error {
+	if err := c.channel.Cancel(c.name, true); err != nil {
+		return fmt.Errorf("concumer=%v: cancel: %v", c.name, err)
+	}
+	<-c.done
+	return nil
 }
