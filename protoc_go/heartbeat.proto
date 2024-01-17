@@ -1,0 +1,14 @@
+// protoc --go_out=. heartbeat.proto
+
+syntax = "proto3";
+option go_package = ".;main";
+
+// id=0
+message Ping {
+    int64 Timestamp = 1;
+}
+
+// id=99
+message Pong {
+    int64 Timestamp = 1;
+}
