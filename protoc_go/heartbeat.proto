@@ -1,0 +1,29 @@
+syntax = "proto3";
+option go_package = ".;main";
+import "google/protobuf/any.proto";
+import "google/protobuf/struct.proto";
+
+message LeafPayload{
+    int32 LeafId = 1;
+
+    // Any:
+    // 主要用於在 Protobuf 中傳遞和存儲任意類型的二進制數據，它可以包含任何 Protobuf 消息。
+    //
+    // Value:
+    // 主要用於在 Protobuf 中表示 JSON 的值，以及其他基本數據類型（字符串、數字、布爾等）。
+    // 它的主要目的是使 Protobuf 與 JSON 進行互操作。
+    google.protobuf.Any Message1 = 2;   // https://protobuf.dev/reference/protobuf/google.protobuf/#any
+    google.protobuf.Value Message2 = 3; // https://protobuf.dev/reference/protobuf/google.protobuf/#value
+}
+
+// id=0
+message WebsocketPing {
+    int64 Timestamp = 1;
+}
+
+// id=99
+message WebsocketPong {
+    int64 Timestamp = 1;
+}
+
+
