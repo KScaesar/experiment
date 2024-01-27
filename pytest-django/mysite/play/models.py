@@ -1,3 +1,4 @@
+from ast import main
 from django.db import models
 
 
@@ -16,6 +17,11 @@ class Album(models.Model):
 
 
 def create_musician():
-    row = Musician.objects.create(first_name="caesar", last_name="tsai", instrument="i can fly")
+    row = Musician.objects.create(
+        first_name="caesar",
+        last_name="tsai",
+        instrument="i can fly",
+    )
     print(row)
     row.save()
+
