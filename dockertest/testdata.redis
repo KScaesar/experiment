@@ -1,0 +1,19 @@
+SET user:1000:username "john_doe"
+SET user:1000:profile '{"name": "John Doe", "age": 30, "email": "john@example.com"}'
+
+HSET product:123 name "iPhone 12"
+HSET product:123 price "999"
+
+LPUSH queue:email "email1@example.com"
+RPUSH queue:email "email2@example.com"
+LRANGE queue:email 0 -1
+
+SADD tags:product:123 "electronics"
+SADD tags:product:123 "smartphone"
+SADD tags:product:123 "apple"
+SMEMBERS tags:product:123
+
+ZADD leaderboard:high_scores 1500 "player:1001"
+ZADD leaderboard:high_scores 1400 "player:1002"
+ZRANGEBYSCORE leaderboard:high_scores -inf +inf
+
