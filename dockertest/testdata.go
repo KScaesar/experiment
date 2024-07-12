@@ -26,17 +26,12 @@ func main() {
 
 func RunDockerTest() {
 	container := NewDockerTest()
-
-	defer func() {
-		if recover() != nil {
-			container.SafePurge()
-		}
-	}()
+	defer container.Purge()
 
 	container.Redis()
 	log.Printf("redis port %v", container.RedisPublishedPort)
 
-	container.WaitPurge()
+	container.Wait()
 }
 
 func NewDockerTest() *DockerTest {
@@ -78,13 +73,11 @@ type DockerTest struct {
 	done       chan struct{}
 }
 
-func (c *DockerTest) SafePurge() {
-	close(c.done)
-	c.WaitPurge()
+func (c *DockerTest) Wait() {
+	<-c.done
 }
 
-func (c *DockerTest) WaitPurge() {
-	<-c.done
+func (c *DockerTest) Purge() {
 	for _, r := range c.purgeQueue {
 		if err := c.pool.Purge(r); err != nil {
 			log.Printf("Error: %v", err)
@@ -97,6 +90,19 @@ func (c *DockerTest) Redis() {
 	c.RedisResource = r
 	c.RedisPublishedPort = port
 	c.purgeQueue = append(c.purgeQueue, r)
+
+	task := func() error {
+		execOpts := dockertest.ExecOptions{
+			StdIn: bytes.NewBufferString(testdataRedis),
+		}
+		_, err := r.Exec([]string{"redis-cli"}, execOpts)
+		return err
+	}
+
+	err := c.pool.Retry(task)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (c *DockerTest) redis() (*dockertest.Resource, string) {
@@ -106,13 +112,6 @@ func (c *DockerTest) redis() (*dockertest.Resource, string) {
 	Env := []string{}
 	ExposedPort := "6379/tcp"
 	Cmd := []string{}
-	Task := func(r *dockertest.Resource) error {
-		execOpts := dockertest.ExecOptions{
-			StdIn: bytes.NewBufferString(testdataRedis),
-		}
-		_, err := r.Exec([]string{"redis-cli"}, execOpts)
-		return err
-	}
 
 	// workflow
 	{
@@ -134,13 +133,6 @@ func (c *DockerTest) redis() (*dockertest.Resource, string) {
 			Auth:         c.authOpt,
 		}
 		resource, err := c.pool.RunWithOptions(runOpt)
-		if err != nil {
-			panic(err)
-		}
-
-		err = c.pool.Retry(func() error {
-			return Task(resource)
-		})
 		if err != nil {
 			panic(err)
 		}
