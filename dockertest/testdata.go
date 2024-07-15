@@ -28,7 +28,7 @@ func RunDockerTest() {
 	container := NewDockerTest()
 	defer container.Purge()
 
-	container.Redis()
+	container.DefaultRedis()
 	log.Printf("redis port %v", container.RedisPublishedPort)
 
 	container.Wait()
@@ -85,21 +85,35 @@ func (c *DockerTest) Purge() {
 	}
 }
 
-func (c *DockerTest) Redis() {
-	r, port := c.redis()
-	c.RedisResource = r
-	c.RedisPublishedPort = port
-	c.purgeQueue = append(c.purgeQueue, r)
+func (c *DockerTest) DefaultRedis() {
+	c.Redis(c.DefaultTask())
+}
 
-	task := func() error {
+func (c *DockerTest) DefaultTask() func(*dockertest.Resource) error {
+	return func(r *dockertest.Resource) error {
 		execOpts := dockertest.ExecOptions{
 			StdIn: bytes.NewBufferString(testdataRedis),
 		}
 		_, err := r.Exec([]string{"redis-cli"}, execOpts)
 		return err
 	}
+}
 
-	err := c.pool.Retry(task)
+func (c *DockerTest) Redis(tasks ...func(r *dockertest.Resource) error) {
+	r, port := c.redis()
+	c.RedisResource = r
+	c.RedisPublishedPort = port
+	c.purgeQueue = append(c.purgeQueue, r)
+
+	err := c.pool.Retry(func() error {
+		for _, task := range tasks {
+			err := task(r)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 	if err != nil {
 		panic(err)
 	}
