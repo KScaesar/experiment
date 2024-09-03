@@ -1,0 +1,15 @@
+---
+- name: deploy flow
+  hosts: svc1
+  tasks:
+    - name: copy keys and .env
+      copy:
+        src: "{{ item }}"
+        dest: "~/deployment/files"
+      loop:
+        - ../../keys/
+        - ../../.env.staging
+        - ../../.env.production
+
+    - name: exec run-service.sh on remote host
+      script: ./run-service.sh {{ build_number }} {{ env }}

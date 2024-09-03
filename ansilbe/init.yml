@@ -1,0 +1,21 @@
+---
+- name: init remote vm
+  hosts: svc1
+  tasks:
+    - name: create dir ~/deployment
+      file:
+        path: ~/deployment
+        state: directory
+        mode: '0755'
+
+    - name: create dir ~/deployment/files
+      file:
+        path: ~/deployment/files
+        state: directory
+        mode: '0755'
+
+    - name: crete docker volume for prefect postgresql
+      command: docker volume create postgres-data
+
+    - name: crete docker volume for prefect server
+      command: docker volume create prefect-data
