@@ -7,8 +7,8 @@ services:
     restart: unless-stopped
 #    container_name: redis
     ports:
-      - "0:6379"
-#      - "6379:6379"
+#      - "0:6379"
+      - "16379:6379"
 
     sysctls:
       net.core.somaxconn: 1024
@@ -21,9 +21,9 @@ services:
 
     volumes:
       - ./redis-7.4.conf:/usr/local/etc/redis/redis.conf
-      - ./testdata.redis:/testdata
-#      - redis_data:/data
-#
-#volumes:
-#  redis_data:
+      - ./testdata_db1.redis:/testdata_db1
+      - redis_data:/data
+
+volumes:
+  redis_data:
 #    name: testing_redis_data

@@ -17,15 +17,12 @@ func main() {
 }
 
 func run() {
-	downContainer, err := testdata.UpContainer(true)
-	if err != nil {
-		panic(err.Error())
-	}
+	DownContainer := testdata.UpContainer(true)
 
 	osSig := make(chan os.Signal, 2)
 	signal.Notify(osSig, syscall.SIGINT, syscall.SIGTERM)
 	<-osSig
-	err = downContainer()
+	err := DownContainer()
 	if err != nil {
 		panic(err.Error())
 	}

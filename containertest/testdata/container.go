@@ -15,19 +15,35 @@ import (
 )
 
 // https://golang.testcontainers.org/features/docker_compose/
-// https://golang.testcontainers.org/modules/redis/
 
-func UpContainer(removeData bool) (downContainer func() error, err error) {
+// UpContainer 為了啟動 container，需要設置環境變數
+//
+// 環境變數：
+//
+//   - WORK_DIR:
+//     為了找到 `docker-compose.yml`，需要指定工作目錄
+//   - CGO_ENABLED: 設定為 `1`
+//     因為在 macOS 中，需要啟用 CGO 才能正確運行 fsevents， https://github.com/fsnotify/fsevents
+func UpContainer(removeData bool) (downContainer func() error) {
+	var Err error
+	defer func() {
+		if Err != nil {
+			panic(Err)
+		}
+	}()
+
 	compose, err := newDockerCompose()
 	if err != nil {
-		return nil, err
+		Err = err
+		return
 	}
 
 	ctx := context.Background()
 
 	err = compose.Up(ctx, tc.RemoveOrphans(true))
 	if err != nil {
-		return nil, fmt.Errorf("compose.Up: %w", err)
+		Err = fmt.Errorf("compose.Up: %w", err)
+		return
 	}
 
 	down := func() error {
@@ -38,10 +54,10 @@ func UpContainer(removeData bool) (downContainer func() error, err error) {
 		return nil
 	}
 	defer func() {
-		if err != nil {
+		if Err != nil {
 			downErr := down()
 			if downErr != nil {
-				panic(err)
+				panic(downErr)
 			}
 		}
 	}()
@@ -65,7 +81,8 @@ func UpContainer(removeData bool) (downContainer func() error, err error) {
 		mqError <- nil
 	}()
 
-	return down, <-mqError
+	Err = <-mqError
+	return down
 }
 
 //
@@ -147,14 +164,19 @@ func redisService(svc string) service {
 			return svc, fmt.Errorf("wait ready: %w", err)
 		}
 
-		code, reader, err := container.Exec(ctx, []string{"bash", "-c", "cat /testdata | redis-cli --pipe"})
-		if err != nil {
-			return svc, fmt.Errorf("container.Exec: %w", err)
+		commands := []string{
+			"cat /testdata_db1 | redis-cli --pipe -n 1",
 		}
-		const success = 0
-		if code != success {
-			errorMessage, _ := io.ReadAll(reader)
-			return svc, fmt.Errorf("populate testdata: \n%v", string(errorMessage))
+		for _, command := range commands {
+			code, reader, err := container.Exec(ctx, []string{"bash", "-c", command})
+			if err != nil {
+				return svc, fmt.Errorf("container.Exec: %w", err)
+			}
+			const success = 0
+			if code != success {
+				errorMessage, _ := io.ReadAll(reader)
+				return svc, fmt.Errorf("populate testdata: \n%v", string(errorMessage))
+			}
 		}
 
 		host, err := container.Host(ctx)
