@@ -144,11 +144,13 @@ type service func(compose tc.ComposeStack, ctx context.Context) (svc string, err
 
 func services() []service {
 	return []service{
-		redisService("redis1"),
+		redisService("redis1", []string{
+			"cat /testdata_db1 && cat /testdata_db1 | redis-cli --pipe -n 1",
+		}),
 	}
 }
 
-func redisService(svc string) service {
+func redisService(svc string, commands []string) service {
 	return func(compose tc.ComposeStack, ctx context.Context) (string, error) {
 		container, err := compose.ServiceContainer(ctx, svc)
 		if err != nil {
@@ -164,9 +166,6 @@ func redisService(svc string) service {
 			return svc, fmt.Errorf("wait ready: %w", err)
 		}
 
-		commands := []string{
-			"cat /testdata_db1 | redis-cli --pipe -n 1",
-		}
 		for _, command := range commands {
 			code, reader, err := container.Exec(ctx, []string{"bash", "-c", command})
 			if err != nil {
@@ -175,7 +174,7 @@ func redisService(svc string) service {
 			const success = 0
 			if code != success {
 				errorMessage, _ := io.ReadAll(reader)
-				return svc, fmt.Errorf("populate testdata: \n%v", string(errorMessage))
+				return svc, fmt.Errorf("\n%v", string(errorMessage))
 			}
 		}
 
