@@ -85,7 +85,7 @@ update_fluentd_conf() {
   sudo chmod 644 "${sys}"
 }
 
-varify_and_restart_fluentd() {
+verify_and_restart_fluentd() {
   local conf="$1"
 
   if fluentd --dry-run -c "${conf}"; then
@@ -120,9 +120,9 @@ update_integration() {
   echo "Creating log directory for ${APP}"
   sudo mkdir -p "/var/log/${APP}"
   sudo chmod 775 "/var/log/${APP}"
-
   sudo touch "/var/log/${APP}/stdout.log" "/var/log/${APP}/stderr.log"
-  sudo chown -R "${USER}:${USER}" "/var/log/${APP}"
+  sudo chown "${USER}:${USER}" /var/log/${APP}
+  sudo chown "${USER}:${USER}" /var/log/${APP}/*.log
 
   # logrotate
   update_logrotate "${WORK_DIR}/builds/logrotate.conf" "/etc/logrotate.d/${APP}.conf"
@@ -131,7 +131,7 @@ update_integration() {
   update_fluentd_conf "${WORK_DIR}/builds/fluent_bq.conf" "/etc/fluent/fluent_bq.conf"
   update_fluentd_conf "${WORK_DIR}/builds/fluent_bq_buffer.conf" "/etc/fluent/fluent_bq_buffer.conf"
   update_fluentd_conf "${WORK_DIR}/builds/fluent.conf" "/etc/fluent/fluentd.conf"
-  varify_and_restart_fluentd "/etc/fluent/fluentd.conf"
+  verify_and_restart_fluentd "/etc/fluent/fluentd.conf"
 
   # crontab
   update_crontab "cron.daily" "  0  0  * * *   root    test -x /usr/sbin/anacron || ( cd / && run-parts --report /etc/cron.daily )"

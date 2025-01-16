@@ -43,4 +43,8 @@ sudo usermod -a -G ec2-user _fluentd
 # https://docs.fluentd.org/installation/post-installation-guide#connect-to-the-other-services
 # https://docs.fluentd.org/deployment/plugin-management
 # https://www.fluentd.org/plugins
-sudo fluent-gem install fluent-plugin-record-modifier fluent-plugin-bigquery
+sudo fluent-gem install \
+fluent-plugin-multi-format-parser \
+fluent-plugin-filter \
+fluent-plugin-record-modifier \
+fluent-plugin-bigquery

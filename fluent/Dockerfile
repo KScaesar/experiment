@@ -1,7 +1,13 @@
 FROM fluent/fluentd:v1.16.6-1.0
 LABEL authors="ksCaesar"
 USER root
-RUN fluent-gem install fluent-plugin-record-modifier fluent-plugin-bigquery
+
+RUN fluent-gem install \
+    fluent-plugin-multi-format-parser \
+    fluent-plugin-filter \
+    fluent-plugin-record-modifier \
+    fluent-plugin-bigquery
+
 RUN mkdir -p /var/log/acs_go && chown fluent:fluent /var/log/acs_go
 USER fluent
 COPY ./keys/bq_svc_key.json /home/ec2-user/acs_go/keys/bq_svc_key.json
