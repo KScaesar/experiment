@@ -11,18 +11,24 @@ import (
 )
 
 func main() {
-	records, err := LoadFile("/Users/caesar.tsai/sort.log")
+	records, err := LoadFile("/Users/caesar.tsai/asdv0402.log")
 	if err != nil {
 		panic(err)
 	}
 
 	adIds := map[string]bool{
-		"5929": true,
+		"7471": true,
+		"7369": true,
 	}
 
-	adUnit := "adsv_litv_tv_livech_tvbsn_ad1"
+	adUnits := map[string]bool{
+		"adsv_litv_tv_livech_ftvn_ad1":       true,
+		"adsv_litv_tv_livech_tvbsn_ad1":      true,
+		"adsv_litv_appleTV_livech_tvbsn_ad1": true,
+		"adsv_litv_webtv_livech_tvbsn_ad1":   true,
+	}
 
-	total, hit, views := SearchTarget(records, adIds, adUnit)
+	_, hit, views := SearchTarget(records, adIds, adUnits)
 	for _, view := range views {
 		fmt.Println(view)
 	}
@@ -31,23 +37,36 @@ func main() {
 ad_unit: 
 %v
 
-請求數量:
+調查數量:
 %v
 
-指定委刊項數量:
+第一順位委刊項目標數量:
 %v
+
+
 `
-	fmt.Printf(report, adUnit, total, hit)
+	fmt.Printf(report, ViewAdUnit(adUnits), len(records), hit)
 }
 
-func SearchTarget(records []Record, adIds map[string]bool, adUnit string) (total, hit int, views []View) {
+func ViewAdUnit(data map[string]bool) string {
+	r := ""
+	for k := range data {
+		r += k
+		r += "\n"
+	}
+	return fmt.Sprintf(r[:len(r)-1])
+}
+
+func SearchTarget(records []Record, adIds map[string]bool, adUnits map[string]bool) (total, hit int, views []View) {
 	for _, record := range records {
-		if record.AdUnit != adUnit {
+		if !adUnits[record.AdUnit] {
 			continue
 		}
 
 		view := View{
 			Datatime: record.Datatime,
+			Puid:     record.PuId,
+			AdUnit:   record.AdUnit,
 		}
 
 		if len(record.ShowList) > 0 {
@@ -78,6 +97,8 @@ func SearchTarget(records []Record, adIds map[string]bool, adUnit string) (total
 }
 
 type View struct {
+	AdUnit    string
+	Puid      string
 	Datatime  string
 	FirstShow Show
 	NonList   []NonShow
@@ -88,7 +109,14 @@ func (v View) String() string {
 	for _, non := range v.NonList {
 		nonList = append(nonList, fmt.Sprintf("%v:%v", non.AdId, non.Reason))
 	}
-	return fmt.Sprintf(`%v	%v	%v	%v`, v.Datatime, v.FirstShow.AdId, v.FirstShow.CreativeId, strings.Join(nonList, "\t"))
+	return fmt.Sprintf(`%v	%v	%v	%v	%v	%v`,
+		v.AdUnit,
+		v.Puid,
+		v.Datatime,
+		v.FirstShow.AdId,
+		v.FirstShow.CreativeId,
+		strings.Join(nonList, "\t"),
+	)
 }
 
 //
